@@ -60,47 +60,8 @@ jobs:
           uses: actions/checkout@v3
           with:
             token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-            fetch-depth: 0
-  
-        - name: Generate and Create New Tag
-          run: |
-            set -x
-            TAG_PREFIX="${TAG_PREFIX%/}"
-            LATEST_NUM=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags \
-              --jq "[.[].name | select(test(\"^${TAG_PREFIX}[0-9]+$\")) | sub(\"${TAG_PREFIX}\"; \"\") | tonumber] | max" \
-              || echo "0")
-  
-            echo "Latest numeric suffix for $TAG_PREFIX*: $LATEST_NUM"
-  
-            NEXT_NUM=$((LATEST_NUM + 1))
-            NEW_TAG="${TAG_PREFIX}${NEXT_NUM}"
-  
-            while gh api repos/$REPO_OWNER/$REPO_NAME/git/refs/tags | grep -q "\"ref\": \"refs/tags/$NEW_TAG\""; do
-              NEXT_NUM=$((NEXT_NUM + 1))
-              NEW_TAG="${TAG_PREFIX}${NEXT_NUM}"
-            done
-  
-            echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
-            echo "🔹Generated unique tag: $NEW_TAG"
-  
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-  
-            if git status --porcelain | grep -qE '\.github/workflows/'; then
-              echo "⚠️ Workflow files modified, creating empty commit..."
-              git commit --allow-empty -m "Empty commit to avoid workflow permission issue"
-              git push
-            else
-              echo "✅ No workflow changes detected."
-            fi
-  
-            git tag "$NEW_TAG"
-            git push origin "$NEW_TAG"
-          env:
-            TAG_PREFIX: op13r-n
-            GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-            GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-  
+            fetch-depth: 0  
+        
         - name: Download Artifacts
           uses: actions/download-artifact@v4
           with:
