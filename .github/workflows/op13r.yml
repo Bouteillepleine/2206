@@ -1,0 +1,169 @@
+name: Build OnePlus 13r Kernel
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      make_release:
+        description: 'Do you want to create a release?'
+        required: true
+        type: boolean
+        default: true
+      set_prerelease:
+        description: 'Set release as prerelease?'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  build-batch:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - model: OP13r
+            soc: pineapple
+            branch: oneplus/sm8650
+            manifest: oneplus_13r.xml
+            android_version: android14
+            kernel_version: "6.1"
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      model: ${{ matrix.model }}
+      soc: ${{ matrix.soc }}
+      branch: ${{ matrix.branch }}
+      manifest: ${{ matrix.manifest }}
+      android_version: ${{ matrix.android_version }}
+      kernel_version: ${{ matrix.kernel_version }}
+
+  trigger-release:
+    needs:
+      - build-batch
+    runs-on: ubuntu-24.04
+    if: ${{ inputs.make_release }}
+    env:
+      ACTIONS_RUNNER_DEBUG: true
+      ACTIONS_STEP_DEBUG: true
+      REPO_OWNER: ${{ github.repository_owner }}
+      REPO_NAME: ${{ github.event.repository.name }}
+      GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      RELEASE_NAME: "OnePlus 13r Kernel With KernelSU-Next & SUSFS"
+      RELEASE_NOTES: |
+      
+    steps:
+        - name: Checkout code
+          uses: actions/checkout@v3
+          with:
+            token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            fetch-depth: 0
+  
+        - name: Generate and Create New Tag
+          run: |
+            set -x
+            TAG_PREFIX="${TAG_PREFIX%/}"
+            LATEST_NUM=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags \
+              --jq "[.[].name | select(test(\"^${TAG_PREFIX}[0-9]+$\")) | sub(\"${TAG_PREFIX}\"; \"\") | tonumber] | max" \
+              || echo "0")
+  
+            echo "Latest numeric suffix for $TAG_PREFIX*: $LATEST_NUM"
+  
+            NEXT_NUM=$((LATEST_NUM + 1))
+            NEW_TAG="${TAG_PREFIX}${NEXT_NUM}"
+  
+            while gh api repos/$REPO_OWNER/$REPO_NAME/git/refs/tags | grep -q "\"ref\": \"refs/tags/$NEW_TAG\""; do
+              NEXT_NUM=$((NEXT_NUM + 1))
+              NEW_TAG="${TAG_PREFIX}${NEXT_NUM}"
+            done
+  
+            echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
+            echo "🔹Generated unique tag: $NEW_TAG"
+  
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+  
+            if git status --porcelain | grep -qE '\.github/workflows/'; then
+              echo "⚠️ Workflow files modified, creating empty commit..."
+              git commit --allow-empty -m "Empty commit to avoid workflow permission issue"
+              git push
+            else
+              echo "✅ No workflow changes detected."
+            fi
+  
+            git tag "$NEW_TAG"
+            git push origin "$NEW_TAG"
+          env:
+            TAG_PREFIX: op13r-n
+            GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+  
+        - name: Download Artifacts
+          uses: actions/download-artifact@v4
+          with:
+            path: ./downloaded-artifacts
+  
+        - name: Create GitHub Release with Retry
+          run: |
+            set -x
+            ATTEMPTS=0
+            MAX_ATTEMPTS=3
+            DELAY_SECONDS=10
+  
+            # flag prerelease
+            if [ "${{ inputs.set_prerelease }}" = "true" ] || [ "${{ inputs.set_prerelease }}" = true ]; then
+              PRERELEASE_FLAG="--prerelease"
+            else
+              PRERELEASE_FLAG=""
+            fi
+  
+            while true; do
+              set +e
+              echo "Attempt $((ATTEMPTS+1)) to create GitHub Release..."
+              gh release create "${{ env.NEW_TAG }}" --title "${{ env.RELEASE_NAME }}" --notes "${{ env.RELEASE_NOTES }}" $PRERELEASE_FLAG
+              EXIT_CODE=$?
+              set -e
+  
+              if [ $EXIT_CODE -eq 0 ]; then
+                echo "✅ GitHub Release created successfully!"
+                break
+              fi
+  
+              ATTEMPTS=$((ATTEMPTS+1))
+              if [ $ATTEMPTS -ge $MAX_ATTEMPTS ]; then
+                echo "❌ Failed to create GitHub Release after $MAX_ATTEMPTS attempts."
+                exit 1
+              fi
+  
+              echo "⚠️ GitHub Release creation failed (attempt $ATTEMPTS). Retrying in $DELAY_SECONDS seconds..."
+              sleep $DELAY_SECONDS
+            done
+          env:
+            GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            RELEASE_NAME: ${{ env.RELEASE_NAME }}
+            RELEASE_NOTES: ${{ env.RELEASE_NOTES }}
+            NEW_TAG: ${{ env.NEW_TAG }}
+  
+        - name: Upload Release Assets Dynamically
+          run: |
+            set -x
+            for file in ./downloaded-artifacts/kernel-*/*; do
+                if [ -d "$file" ]; then
+                    continue
+                fi
+                echo "Uploading $file..."
+                gh release upload ${{ env.NEW_TAG }} "$file"
+            done
+          env:
+            GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+            NEW_TAG: ${{ env.NEW_TAG }}
+  
+        - name: Display Files Uploaded
+          run: |
+            set -x
+            echo "GitHub release created with the following files:"
+            ls ./downloaded-artifacts/**/*
