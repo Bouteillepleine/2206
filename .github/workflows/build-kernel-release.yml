@@ -17,6 +17,14 @@ on:
         required: true
         type: boolean
         default: false
+      ksun_branch:
+        description: "Choose KernelSU Next Branch"
+        required: true
+        type: choice
+        options:
+          - stable
+          - next          
+        default: next
 
 jobs:
 #  build-batch-1:
