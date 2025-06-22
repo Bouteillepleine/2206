@@ -342,6 +342,15 @@ jobs:
           
           find . -type f -exec sed -i 's/\(make\s\+-C[^\n]*\)\s\+/\1 -j$(nproc) /g' {} +
 
+      - name: Clean up disk space
+        run: |
+          echo "Cleaning up Docker and apt caches..."
+          sudo docker system prune -af || true
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf $AGENT_TOOLSDIRECTORY
+          df -h
+
       - name: Build the Kernel
         run: |
           set -x
