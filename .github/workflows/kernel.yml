@@ -198,7 +198,9 @@ jobs:
             cp -r ./sched_ext/* ./common/kernel/sched
           fi
           cd common
-          make -j$(nproc --all) LLVM=-20 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnuabeihf- CC=clang LD=ld.lld HOSTCC=clang HOSTLD=ld.lld O=out KCFLAGS+=-Wno-error gki_defconfig all
+          make -j$(nproc --all) LLVM=-20 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnuabeihf- CC=clang LD=ld.lld HOSTCC=clang HOSTLD=ld.lld O=out KCFLAGS+="-Wno-error -flto=thin" gki_defconfig
+          scripts/config --enable CONFIG_LTO_CLANG_THIN
+          make -j$(nproc --all) LLVM=-20 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnuabeihf- CC=clang LD=ld.lld HOSTCC=clang HOSTLD=ld.lld O=out KCFLAGS+="-Wno-error -flto=thin" all
           echo "Kernel compilation completed!"
          
       - name: Apply patch_linux and Patch Kernel
@@ -275,7 +277,7 @@ jobs:
           tag_name: "${{ env.TAG_HEAD }}-${{ env.TIME }}"
           name: "${{ env.TAG_HEAD }}-${{ env.FULL_VERSION }}"
           body: |
-            ### 📱 Oujiazhen Android 15 SukiSU-Ultra SM8650 Universal Kernel | Build Information
+            ### 📱 Android 15 SukiSU-Ultra SM8650 Universal Kernel | Build Information
             - Kernel version number: ${{ env.FULL_VERSION }}
             - Compilation time: ${{ env.TIME_FORM }}
             - Device: Oujiazhen Snapdragon 8Gen3 6.1 Android 15 Universal Kernel (based on OnePlus 12 Android 15 official OKI source code)
