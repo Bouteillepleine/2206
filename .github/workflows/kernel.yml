@@ -20,7 +20,7 @@ on:
         description: 'Whether to install the LZ4K patch'
         required: true
         type: choice
-        default: 'true'
+        default: 'false'
         options:
           - 'true'
           - 'false'
